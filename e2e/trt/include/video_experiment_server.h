@@ -5,13 +5,13 @@
 #include "omp.h"
 
 #include "video_data_loader.h"
-#include "inference_server.h"
+#include "inference_client.h"
 #include "common.h"
 
 class VideoExperimentServer {
  private:
   const VideoDataLoader& kLoader_;
-  InferenceServer *kInfer_; // not const cause this would be a pain
+  InferenceClient *kInfer_; // not const cause this would be a pain
   const size_t kBatchSize_;
   const size_t kImSize_;
   const size_t kOutputSingle_;
@@ -20,7 +20,7 @@ class VideoExperimentServer {
   const bool kRunInfer_;
 
  public:
-  VideoExperimentServer(const VideoDataLoader& kLoader, InferenceServer *kInfer,
+  VideoExperimentServer(const VideoDataLoader& kLoader, InferenceClient *kInfer,
                         const size_t kBatchSize, const bool kRunInfer) :
       kLoader_(kLoader), kInfer_(kInfer), kBatchSize_(kBatchSize),
       kImSize_(3 * kLoader.GetResol() * kLoader.GetResol()),

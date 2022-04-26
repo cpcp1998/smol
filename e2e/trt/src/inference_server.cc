@@ -2,13 +2,26 @@
 #include <future>
 #include <numeric>
 #include <thread>
+#include <vector>
 
-#include "folly/MPMCQueue.h"
 #include "omp.h"
 
 #include "calibrator.h"
 #include "inference_server.h"
 
+
+void InferenceServer::_RunInferenceThread(const size_t idx) {
+  std::vector<char> buffer;
+  while (true) {
+    size_t size;
+    void *addr = inputQueue.startRead(&size);
+    if (!addr) return;
+    if (size > buffer.size()) buffer.resize(size);
+    memcpy(buffer.data(), addr, size);
+    inputQueue.finishRead(&size);
+    RunInference(buffer.data(), size, idx);
+  }
+}
 
 static void add_resize(nvinfer1::INetworkDefinition *network, const int32_t kBatchSize) {
   using namespace nvinfer1;
@@ -87,9 +100,11 @@ nvinfer1::ICudaEngine* OnnxInferenceServer::GetCudaEngine(const std::string& kEn
 }
 
 OnnxInferenceServer::OnnxInferenceServer(
+    const char *inputQueueName, size_t inputQueueSize,
     const std::string& kEnginePath, const size_t kBatchSize, const bool kDoMemcpy) :
+    InferenceServer(inputQueueName, inputQueueSize),
     kBatchSize_(kBatchSize),
-    queue_(omp_get_max_threads() * 3), contexts(kNbStreams_),
+    contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
   // TensorRT engine stuff
   this->engine.reset(GetCudaEngine(kEnginePath));
@@ -98,6 +113,7 @@ OnnxInferenceServer::OnnxInferenceServer(
 }
 
 OnnxInferenceServer::OnnxInferenceServer(
+    const char *inputQueueName, size_t inputQueueSize,
     const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
     const std::string& kCachePath,
     const size_t kBatchSize, const bool kDoMemcpy,
@@ -106,8 +122,9 @@ OnnxInferenceServer::OnnxInferenceServer(
     const bool kDoINT8,
     const bool kAddResize
 ) :
+    InferenceServer(inputQueueName, inputQueueSize),
     kBatchSize_(kBatchSize),
-    queue_(omp_get_max_threads() * 3), contexts(kNbStreams_),
+    contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
   BaseCalibrator *calibrator = NULL;
   if (kDoINT8) {
@@ -127,6 +144,7 @@ OnnxInferenceServer::OnnxInferenceServer(
 
 
 OnnxInferenceServer::OnnxInferenceServer(
+    const char *inputQueueName, size_t inputQueueSize,
     const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
     const std::string& kCachePath,
     const size_t kBatchSize, const bool kDoMemcpy,
@@ -135,8 +153,9 @@ OnnxInferenceServer::OnnxInferenceServer(
     const bool kDoINT8,
     const bool kAddResize
 ) :
+    InferenceServer(inputQueueName, inputQueueSize),
     kBatchSize_(kBatchSize),
-    queue_(omp_get_max_threads() * 3), contexts(kNbStreams_),
+    contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
   BaseCalibrator *calibrator = NULL;
   if (kDoINT8) {
@@ -169,6 +188,7 @@ void OnnxInferenceServer::LoadAndLaunch() {
         kOutputSingle_ = size / kBatchSize_;
     }
     this->contexts[j].reset(engine->createExecutionContext());
+    this->outputBuffers[j].resize(kOutputSingle_);
   }
 
   // Launch thread
@@ -178,65 +198,23 @@ void OnnxInferenceServer::LoadAndLaunch() {
 
 
 
-void OnnxInferenceServer::_RunInferenceThread(const size_t idx) {
+void OnnxInferenceServer::RunInference(void *data, size_t size, size_t idx) {
   const int input_id = !contexts[idx]->getEngine().bindingIsInput(0);
-  QueueData input_data;
-  folly::MPMCQueue<Batch> *batch_queue;
-  size_t output_size, batch_size;
-  float *output_buf;
-  while (true) {
-    queue_.blockingRead(input_data);
-    std::tie(std::ignore, batch_size, output_buf, output_size, batch_queue) = input_data;
-    if (batch_size == 0) {
-      cudaStreamSynchronize(streams[idx]);
-      break;
-    }
-    Batch kData = std::move(std::get<0>(input_data));
-    if (kDoMemcpy_) {
-      cudaMemcpyAsync(bindings[idx][input_id],
-                      kData.get()->data(),
-                      kData.get()->size() * sizeof(float),
-                      cudaMemcpyHostToDevice, streams[idx]);
-    }
-    contexts[idx]->enqueueV2(bindings[idx], streams[idx], nullptr);
-    if (kDoMemcpy_) {
-      cudaMemcpyAsync(output_buf,
-                      bindings[idx][1 - input_id],
-                      output_size * sizeof(float),
-                      cudaMemcpyDeviceToHost, streams[idx]);
-    }
-    if (batch_queue != nullptr)
-      batch_queue->blockingWrite(std::move(kData));
+  if (kDoMemcpy_) {
+    cudaMemcpyAsync(bindings[idx][input_id],
+                    data,
+                    size,
+                    cudaMemcpyHostToDevice, streams[idx]);
   }
-}
-
-void OnnxInferenceServer::RunInference(QueueData data) {
-  queue_.blockingWrite(std::move(data));
+  contexts[idx]->enqueueV2(bindings[idx], streams[idx], nullptr);
+  if (kDoMemcpy_) {
+    cudaMemcpyAsync(outputBuffers[idx].data(),
+                    bindings[idx][1 - input_id],
+                    outputBuffers[idx].size(),
+                    cudaMemcpyDeviceToHost, streams[idx]);
+  }
+  cudaStreamSynchronize(streams[idx]);
 }
 
 void OnnxInferenceServer::Sync() {
-  while (!queue_.isEmpty()) ;
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-  for (size_t i = 0; i < kNbStreams_; i++)
-    cudaStreamSynchronize(streams[i]);
-}
-
-void OnnxInferenceServer::warmup(const size_t kResol) {
-  const size_t kWarmupIter = 100;
-  std::vector<float> output;
-  output.reserve(kBatchSize_ * kOutputSingle_);
-  for (size_t i = 0; i < kWarmupIter; i++) {
-    Batch data(
-        new BatchBase(3 * kResol * kResol * kBatchSize_));
-    RunInference(
-        std::make_tuple(std::move(data), kBatchSize_,
-                        output.data(), output.size(),
-                        nullptr));
-  }
-  Sync();
-}
-
-std::vector<std::vector<float> > OnnxInferenceServer::GetResults() {
-  std::vector<std::vector<float> > ret;
-  return ret;
 }

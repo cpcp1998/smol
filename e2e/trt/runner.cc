@@ -9,7 +9,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include "include/data_loader.h"
-#include "include/inference_server.h"
+#include "include/inference_client.h"
 #include "include/experiment_server.h"
 #include "include/criterion.h"
 
@@ -56,49 +56,16 @@ std::vector<CompressedImage> GetCompressed(
 class InferenceConfig {
  public:
   std::string kDataPath_;
-  const size_t kBatchSize_, kModelInputDim_;
+  const size_t kBatchSize_;
+  InferenceClient *infer;
   DataLoader *loader;
-  OnnxInferenceServer *infer;
 
   InferenceConfig(
-      const std::string& kDataPath,
-      const std::string& kEnginePath,
-      const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
-      const size_t kBatchSize, const size_t kModelInputDim,
-      const size_t kDoMemcpy,
-      DataLoader *loader,
-      const bool kDoResize = true,
-      const bool kDoINT8 = false,
-      const bool kDoWarmup = true) :
-      kDataPath_(kDataPath),
-      kBatchSize_(kBatchSize), kModelInputDim_(kModelInputDim),
-      loader(loader) {
-    namespace fs = std::experimental::filesystem;
-    if (fs::exists(kEnginePath)) {
-      infer = new OnnxInferenceServer(kEnginePath, kBatchSize, kDoMemcpy);
-    } else {
-      std::vector<CompressedImage> compressed(0);
-      if (kDoINT8) {
-        compressed = GetCompressed(GetFileNames(kDataPath), *loader, 1);
+      std::string kDataPath,
+      const char *inputQueueName, const size_t kBatchSize, DataLoader *loader) :
+      kDataPath_(kDataPath), kBatchSize_(kBatchSize), loader(loader) {
+          infer = new InferenceClient(inputQueueName);
       }
-      infer = new OnnxInferenceServer(
-          kOnnxPath, kOnnxPathBS1, kEnginePath,
-          kBatchSize, kDoMemcpy,
-          loader, compressed,
-          kDoINT8, !kDoResize);
-      for (size_t i = 0; i < compressed.size(); i++) {
-        free(compressed[i].first);
-      }
-      compressed.erase(compressed.begin(), compressed.end());
-    }
-    if (kDoWarmup) {
-      warmup();
-    }
-  }
-
-  void warmup() {
-    infer->warmup(kBatchSize_);
-  }
 };
 
 static std::vector<size_t> MaskToIndMap(const std::vector<bool>& mask) {
@@ -115,10 +82,6 @@ static std::vector<size_t> MaskToIndMap(const std::vector<bool>& mask) {
 }
 
 int main(int argc, char *argv[]) {
-  // auto paths = GetFileNames("/lfs/1/ddkang/vision-inf/data/imagenet/val/");
-  // auto paths = GetFileNames("/lfs/1/ddkang/vision-inf/data/in-small-jpeg-75/val/");
-  // auto paths = GetFileNames("/lfs/1/ddkang/vision-inf/data/in-small-jpeg-95/val/");
-  // auto paths = GetFileNames("/lfs/1/ddkang/vision-inf/data/in-small-png/val/");
 
   assert(argc == 2);
   YAML::Node cfg = YAML::LoadFile(argv[1]);
@@ -161,15 +124,9 @@ int main(int argc, char *argv[]) {
     configs.push_back(
         InferenceConfig(
             cfg_single["data-path"].as<std::string>(),
-            cfg_single["engine-path"].as<std::string>(),
-            cfg_single["onnx-path"].as<std::string>(),
-            cfg_single["onnx-path-bs1"].as<std::string>(),
+            cfg_single["input-queue"].as<std::string>().c_str(),
             cfg_single["batch-size"].as<int>(),
-            kModelInputDim,
-            kDoMemcpy,
-            loader,
-            kDoResize,
-            cfg_single["do-int8"].as<bool>()));
+            loader));
   }
 
   if (cfg["experiment-type"].as<std::string>() != "full") {
@@ -191,12 +148,10 @@ int main(int argc, char *argv[]) {
   }
 
   // FIXME: cascades are implemented in a really annoying way right now
-  std::vector<float> final_output;
   std::vector<bool> mask;
   std::vector<size_t> ind_map;
   for (size_t i = 0; i < configs.size(); i++) {
     InferenceConfig *config = &configs[i];
-    const size_t kOutputSingle = config->infer->GetOutputSingle();
     auto base_paths = GetFileNames(config->kDataPath_);
     std::vector<std::string> paths(base_paths.size());
     if (i == 0) {
@@ -214,7 +169,6 @@ int main(int argc, char *argv[]) {
     ExperimentServer server(*config->loader, config->infer,
                             config->kBatchSize_, kRunInfer);
     float time;
-    std::vector<float> output;
     if (kTimeLoad) {
       // throw std::runtime_error("Loading not implemented");
       time = server.TimeEndToEnd(paths);
@@ -222,36 +176,9 @@ int main(int argc, char *argv[]) {
     } else {
       auto compressed_images = GetCompressed(paths, *config->loader, kMult);
       std::cerr << "Loaded files from disk\n";
-      std::tie(time, output) = server.TimeNoLoad(compressed_images);
+      time = server.TimeNoLoad(compressed_images);
       std::cerr << "Runtime: " << time << std::endl;
     }
-
-    // Cascades
-    if (i == 0) {
-      assert(output.size() % kOutputSingle == 0);
-      std::copy(output.begin(), output.end(), std::back_inserter(final_output));
-      // FIXME: do softmax anyway?
-      if (criterion == NULL)
-        continue;
-      mask = criterion->filter(output.size() / kOutputSingle, output);
-      ind_map = MaskToIndMap(mask);
-    } else {
-      if (ind_map.size() == 0)
-        continue;
-      assert(output.size() % kOutputSingle == 0);
-      for (size_t i = 0; i < ind_map.size(); i++) {
-        const auto kInStart = output.begin() + i * kOutputSingle;
-        const auto kInEnd = output.begin() + (i + 1) * kOutputSingle;
-        auto kOutStart = final_output.begin() + ind_map[i] * kOutputSingle;
-        std::copy(kInStart, kInEnd, kOutStart);
-      }
-    }
-  }
-
-  if (kWriteOut) {
-    std::ofstream fout("preds.out", std::ios::out | std::ios::binary);
-    fout.write((char *) final_output.data(), final_output.size() * sizeof(float));
-    fout.close();
   }
 
   return 0;

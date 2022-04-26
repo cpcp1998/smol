@@ -17,15 +17,18 @@
 #include "common.h"
 #include "data_loader.h"
 #include "calibrator.h"
+#include "ipc.h"
 
 
 // This should possibly be an abstract base class, but we're only using ONNX for now
 class InferenceServer {
+ private:
+  MessageQueueShm inputQueue;
  public:
-  virtual size_t GetOutputSingle() = 0;
-  virtual void RunInference(QueueData data) = 0;
-  virtual void Sync() = 0;
-  virtual std::vector<std::vector<float> > GetResults() = 0;
+  InferenceServer(const char *inputQueueName, size_t inputQueueSize) :
+      inputQueue(inputQueueName, inputQueueSize, true) {}
+  virtual void RunInference(void *data, size_t size, size_t thread_idx) = 0;
+  void _RunInferenceThread(const size_t idx);
 };
 
 class OnnxInferenceServer : public InferenceServer {
@@ -40,10 +43,10 @@ class OnnxInferenceServer : public InferenceServer {
   std::unique_ptr<nvinfer1::ICudaEngine> engine{nullptr};
   // std::unique_ptr<nvinfer1::IExecutionContext, nvinfer1::Destroy<nvinfer1::IExecutionContext>> context{nullptr};
   std::vector<std::unique_ptr<nvinfer1::IExecutionContext> > contexts;
+  std::vector<std::vector<char> > outputBuffers;
   void *bindings[kNbStreams_][2];
   cudawrapper::CudaStream streams[kNbStreams_];
 
-  folly::MPMCQueue<QueueData> queue_;
   std::vector<std::thread> threads_;
 
 
@@ -55,15 +58,9 @@ class OnnxInferenceServer : public InferenceServer {
       const bool kDoINT8, const bool kAddResize);
   nvinfer1::ICudaEngine* GetCudaEngine(const std::string& kEnginePath);
 
-  void _RunInferenceThread(const size_t idx);
-
   void teardown() {
-    for (size_t i = 0; i < kNbStreams_; i++) {
-      queue_.blockingWrite(std::make_tuple(nullptr, 0, nullptr, 0, nullptr));
-    }
     for (size_t i = 0; i < threads_.size(); i++)
       threads_[i].join();
-    Sync();
 
     for (size_t i = 0; i < kNbStreams_; i++)
       for (void* ptr : this->bindings[i])
@@ -74,10 +71,12 @@ class OnnxInferenceServer : public InferenceServer {
 
  public:
   OnnxInferenceServer(
+      const char *inputQueueName, size_t inputQueueSize,
       const std::string& kEnginePath, const size_t kBatchSize,
       const bool kDoMemcpy);
 
   OnnxInferenceServer(
+      const char *inputQueueName, size_t inputQueueSize,
       const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
       const std::string& kCachePath,
       const size_t kBatchSize, const bool kDoMemcpy,
@@ -87,6 +86,7 @@ class OnnxInferenceServer : public InferenceServer {
       const bool kAddResize = false);
 
   OnnxInferenceServer(
+      const char *inputQueueName, size_t inputQueueSize,
       const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
       const std::string& kCachePath,
       const size_t kBatchSize, const bool kDoMemcpy,
@@ -95,15 +95,9 @@ class OnnxInferenceServer : public InferenceServer {
       const bool kDoINT8 = false,
       const bool kAddResize = false);
 
-  size_t GetOutputSingle() { return kOutputSingle_; }
-
-  void warmup(const size_t kResol);
-
-  void RunInference(QueueData data);
+  void RunInference(void *data, size_t size, size_t thread_idx);
 
   void Sync();
-
-  std::vector<std::vector<float> > GetResults();
 
   ~OnnxInferenceServer() {
     teardown();
