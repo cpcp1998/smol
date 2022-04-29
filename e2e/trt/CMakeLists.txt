@@ -59,6 +59,10 @@ add_library(trt_common STATIC ${SOURCES})
 target_link_libraries(trt_common PUBLIC OpenMP::OpenMP_CXX)
 target_include_directories(trt_common PUBLIC ${OpenCV_INCLUDE_DIRS} ${JPEG_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
 
+add_executable(create_queue create_queue.cc)
+target_link_libraries(create_queue PUBLIC OpenMP::OpenMP_CXX trt_common ${ALL_LIBS})
+target_include_directories(create_queue PUBLIC ${ONNX_INCLUDE})
+
 add_executable(inference_server inference_server.cc)
 target_link_libraries(inference_server PUBLIC OpenMP::OpenMP_CXX trt_common ${ALL_LIBS})
 target_include_directories(inference_server PUBLIC ${ONNX_INCLUDE})

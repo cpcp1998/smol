@@ -25,8 +25,8 @@ class InferenceServer {
  private:
   MessageQueueShm inputQueue;
  public:
-  InferenceServer(const char *inputQueueName, size_t inputQueueSize) :
-      inputQueue(inputQueueName, inputQueueSize, true) {}
+  InferenceServer(const char *inputQueueName) :
+      inputQueue(inputQueueName, 0, false) {}
   virtual void RunInference(void *data, size_t size, size_t thread_idx) = 0;
   void _RunInferenceThread(const size_t idx);
 };
@@ -71,12 +71,12 @@ class OnnxInferenceServer : public InferenceServer {
 
  public:
   OnnxInferenceServer(
-      const char *inputQueueName, size_t inputQueueSize,
+      const char *inputQueueName,
       const std::string& kEnginePath, const size_t kBatchSize,
       const bool kDoMemcpy);
 
   OnnxInferenceServer(
-      const char *inputQueueName, size_t inputQueueSize,
+      const char *inputQueueName,
       const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
       const std::string& kCachePath,
       const size_t kBatchSize, const bool kDoMemcpy,
@@ -86,7 +86,7 @@ class OnnxInferenceServer : public InferenceServer {
       const bool kAddResize = false);
 
   OnnxInferenceServer(
-      const char *inputQueueName, size_t inputQueueSize,
+      const char *inputQueueName,
       const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
       const std::string& kCachePath,
       const size_t kBatchSize, const bool kDoMemcpy,

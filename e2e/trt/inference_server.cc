@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
   size_t kBatchSize = atoi(argv[3]);
   bool kDoMemcpy = true;
 
-  OnnxInferenceServer inferServer{inputQueueName, 1024 * 1024, kEnginePath, kBatchSize, kDoMemcpy};
+  OnnxInferenceServer inferServer{inputQueueName, kEnginePath, kBatchSize, kDoMemcpy};
 
   return 0;
 }

@@ -100,9 +100,9 @@ nvinfer1::ICudaEngine* OnnxInferenceServer::GetCudaEngine(const std::string& kEn
 }
 
 OnnxInferenceServer::OnnxInferenceServer(
-    const char *inputQueueName, size_t inputQueueSize,
+    const char *inputQueueName,
     const std::string& kEnginePath, const size_t kBatchSize, const bool kDoMemcpy) :
-    InferenceServer(inputQueueName, inputQueueSize),
+    InferenceServer(inputQueueName),
     kBatchSize_(kBatchSize),
     contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
@@ -113,7 +113,7 @@ OnnxInferenceServer::OnnxInferenceServer(
 }
 
 OnnxInferenceServer::OnnxInferenceServer(
-    const char *inputQueueName, size_t inputQueueSize,
+    const char *inputQueueName,
     const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
     const std::string& kCachePath,
     const size_t kBatchSize, const bool kDoMemcpy,
@@ -122,7 +122,7 @@ OnnxInferenceServer::OnnxInferenceServer(
     const bool kDoINT8,
     const bool kAddResize
 ) :
-    InferenceServer(inputQueueName, inputQueueSize),
+    InferenceServer(inputQueueName),
     kBatchSize_(kBatchSize),
     contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
@@ -144,7 +144,7 @@ OnnxInferenceServer::OnnxInferenceServer(
 
 
 OnnxInferenceServer::OnnxInferenceServer(
-    const char *inputQueueName, size_t inputQueueSize,
+    const char *inputQueueName,
     const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
     const std::string& kCachePath,
     const size_t kBatchSize, const bool kDoMemcpy,
@@ -153,7 +153,7 @@ OnnxInferenceServer::OnnxInferenceServer(
     const bool kDoINT8,
     const bool kAddResize
 ) :
-    InferenceServer(inputQueueName, inputQueueSize),
+    InferenceServer(inputQueueName),
     kBatchSize_(kBatchSize),
     contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
