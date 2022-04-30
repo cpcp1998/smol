@@ -57,7 +57,7 @@ class OnnxInferenceServer : public InferenceServer {
   nvinfer1::ICudaEngine* CreateCudaEngine(
       const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
       BaseCalibrator *calibrator,
-      const bool kDoINT8, const bool kAddResize);
+      const bool kDoINT8, const bool kAddResize, const int32_t kBatchSize);
   nvinfer1::ICudaEngine* GetCudaEngine(const std::string& kEnginePath);
 
   void teardown() {
