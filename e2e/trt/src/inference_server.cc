@@ -31,7 +31,8 @@ nvinfer1::ICudaEngine* OnnxInferenceServer::CreateCudaEngine(
     const std::string& kOnnxPathBS1,
     BaseCalibrator *calibrator,
     const bool kDoINT8,
-    const bool kAddResize) {
+    const bool kAddResize,
+    const int32_t kBatchSize) {
   using namespace std;
   using namespace nvinfer1;
   using nvonnxparser::IParser;
@@ -47,7 +48,22 @@ nvinfer1::ICudaEngine* OnnxInferenceServer::CreateCudaEngine(
   }
 
   // FIXME: is this always correct?
-  const int32_t kBatchSize = network->getInput(0)->getDimensions().d[0];
+  Dims dim;
+  dim = network->getInput(0)->getDimensions();
+  dim.d[0] = kBatchSize;
+  network->getInput(0)->setDimensions(dim);
+  dim = network->getOutput(0)->getDimensions();
+  dim.d[0] = kBatchSize;
+  network->getOutput(0)->setDimensions(dim);
+  for (int32_t l = 0; l < network->getNbLayers(); ++l) {
+    ILayer *layer = network->getLayer(l);
+    if (layer->getType() == LayerType::kSHUFFLE) {
+      IShuffleLayer *layer_ = dynamic_cast<IShuffleLayer *>(layer);
+      Dims dim = layer_->getReshapeDimensions();
+      dim.d[0] = kBatchSize;
+      layer_->setReshapeDimensions(dim);
+    }
+  }
 
   if (kAddResize) {
     add_resize(network.get(), kBatchSize);
@@ -117,7 +133,7 @@ OnnxInferenceServer::OnnxInferenceServer(
   this->engine.reset(
       CreateCudaEngine(kOnnxPath, kOnnxPathBS1,
                        calibrator,
-                       kDoINT8, kAddResize));
+                       kDoINT8, kAddResize, kBatchSize));
   // Cache engine
   std::unique_ptr<nvinfer1::IHostMemory> engine_plan{engine->serialize()};
   nvinfer1::writeBuffer(engine_plan->data(), engine_plan->size(), kCachePath);
@@ -146,7 +162,7 @@ OnnxInferenceServer::OnnxInferenceServer(
   this->engine.reset(
       CreateCudaEngine(kOnnxPath, kOnnxPathBS1,
                        calibrator,
-                       kDoINT8, kAddResize));
+                       kDoINT8, kAddResize, kBatchSize));
   // Cache engine
   std::unique_ptr<nvinfer1::IHostMemory> engine_plan{engine->serialize()};
   nvinfer1::writeBuffer(engine_plan->data(), engine_plan->size(), kCachePath);
