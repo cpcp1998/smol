@@ -63,6 +63,10 @@ add_executable(create_queue create_queue.cc)
 target_link_libraries(create_queue PUBLIC OpenMP::OpenMP_CXX trt_common ${ALL_LIBS})
 target_include_directories(create_queue PUBLIC ${ONNX_INCLUDE})
 
+add_executable(check_queue check_queue.cc)
+target_link_libraries(check_queue PUBLIC OpenMP::OpenMP_CXX trt_common ${ALL_LIBS})
+target_include_directories(check_queue PUBLIC ${ONNX_INCLUDE})
+
 add_executable(inference_server inference_server.cc)
 target_link_libraries(inference_server PUBLIC OpenMP::OpenMP_CXX trt_common ${ALL_LIBS})
 target_include_directories(inference_server PUBLIC ${ONNX_INCLUDE})

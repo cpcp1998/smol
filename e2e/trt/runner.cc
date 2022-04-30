@@ -62,9 +62,11 @@ class InferenceConfig {
 
   InferenceConfig(
       std::string kDataPath,
-      const char *inputQueueName, const size_t kBatchSize, DataLoader *loader) :
+      std::string inputQueueName,
+      std::string outputQueueName,
+      const size_t kBatchSize, DataLoader *loader) :
       kDataPath_(kDataPath), kBatchSize_(kBatchSize), loader(loader) {
-          infer = new InferenceClient(inputQueueName);
+          infer = new InferenceClient(inputQueueName, outputQueueName);
       }
 };
 
@@ -124,7 +126,8 @@ int main(int argc, char *argv[]) {
     configs.push_back(
         InferenceConfig(
             cfg_single["data-path"].as<std::string>(),
-            cfg_single["input-queue"].as<std::string>().c_str(),
+            cfg_single["input-queue"].as<std::string>(),
+            cfg_single["output-queue"].as<std::string>(),
             cfg_single["batch-size"].as<int>(),
             loader));
   }
@@ -169,14 +172,15 @@ int main(int argc, char *argv[]) {
     ExperimentServer server(*config->loader, config->infer,
                             config->kBatchSize_, kRunInfer);
     float time;
+    std::vector<float> output;
     if (kTimeLoad) {
       // throw std::runtime_error("Loading not implemented");
-      time = server.TimeEndToEnd(paths);
+      time = server.TimeEndToEnd(paths, output);
       std::cerr << "Runtime: " << time << std::endl;
     } else {
       auto compressed_images = GetCompressed(paths, *config->loader, kMult);
       std::cerr << "Loaded files from disk\n";
-      time = server.TimeNoLoad(compressed_images);
+      time = server.TimeNoLoad(compressed_images, output);
       std::cerr << "Runtime: " << time << std::endl;
     }
   }

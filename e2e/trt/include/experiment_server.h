@@ -33,11 +33,11 @@ class ExperimentServer {
     //           kBatchSize_ * kImSize_));
   }
 
-  void RunInferenceOnFiles(const std::vector<std::string>& kFileNames);
-  float TimeEndToEnd(const std::vector<std::string>& kFileNames);
+  void RunInferenceOnFiles(const std::vector<std::string>& kFileNames, std::vector<float> &output);
+  float TimeEndToEnd(const std::vector<std::string>& kFileNames, std::vector<float> &output);
 
-  void RunInferenceOnCompressed(const std::vector<CompressedImage>& kCompressedImages);
-  float TimeNoLoad(const std::vector<CompressedImage>& kCompressedImages);
+  void RunInferenceOnCompressed(const std::vector<CompressedImage>& kCompressedImages, std::vector<float> &output);
+  float TimeNoLoad(const std::vector<CompressedImage>& kCompressedImages, std::vector<float> &output);
 
   float TimeInferenceOnly();
 

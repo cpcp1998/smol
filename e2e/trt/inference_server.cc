@@ -5,13 +5,14 @@
 
 
 int main(int argc, char *argv[]) {
-  assert(argc == 4);
-  const char *inputQueueName = argv[1];
-  std::string kEnginePath = argv[2];
-  size_t kBatchSize = atoi(argv[3]);
+  assert(argc == 5);
+  std::string inputQueueName = argv[1];
+  std::string outputQueueName = argv[2];
+  std::string kEnginePath = argv[3];
+  size_t kBatchSize = atoi(argv[4]);
   bool kDoMemcpy = true;
 
-  OnnxInferenceServer inferServer{inputQueueName, kEnginePath, kBatchSize, kDoMemcpy};
+  OnnxInferenceServer inferServer{inputQueueName, outputQueueName, kEnginePath, kBatchSize, kDoMemcpy};
 
   return 0;
 }

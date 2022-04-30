@@ -164,3 +164,12 @@ void MessageQueue::destroy() {
     pthread_cond_destroy(&wcond);
     pthread_cond_destroy(&fcond);
 }
+
+void MessageQueue::check() {
+    pthread_mutex_lock(&mutex);
+    std::cout << "readOff = " << readOff << std::endl;
+    std::cout << "transferOff = " << transferOff << std::endl;
+    std::cout << "writeOff = " << writeOff << std::endl;
+    std::cout << "freeOff = " << freeOff << std::endl;
+    pthread_mutex_unlock(&mutex);
+}

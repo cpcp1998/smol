@@ -91,6 +91,8 @@ struct MessageQueue {
     void close();
 
     void destroy();
+
+    void check();
 };
 
 class MessageQueueShm {
@@ -136,6 +138,10 @@ public:
 
     void close() {
         mq_->close();
+    }
+
+    void check() {
+        mq_->check();
     }
 
 private:

@@ -7,6 +7,7 @@
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <atomic>
 
 #include "common.h"
 #include "ipc.h"
@@ -14,17 +15,46 @@
 
 class InferenceClient {
  private:
-  MessageQueueShm mq;
+  MessageQueueShm inputQueue;
+  MessageQueueShm outputQueue;
+  std::atomic_size_t inputCount, outputCount;
+  std::atomic_bool finished;
+  std::thread receiver;
  public:
-  InferenceClient(const char *inputQueueName) : mq(inputQueueName, 0, false) {}
+  InferenceClient(
+      const std::string &inputQueueName,
+      const std::string &outputQueueName) :
+      inputQueue(inputQueueName.c_str(), 0, false),
+      outputQueue(outputQueueName.c_str(), 0, false),
+      inputCount(0), outputCount(0), finished(false),
+      receiver([this] { discardResult(); }) {}
 
   void RunInference(void *data, size_t size) {
-    void *msg = mq.alloc(size);
+    void *msg = inputQueue.alloc(size);
     if (msg) {
       memcpy(msg, data, size);
-      mq.finishWrite(msg);
+      inputQueue.finishWrite(msg);
+      ++inputCount;
+    } else {
+      std::cerr << "Message too large" << std::endl;
     }
   }
+
+  void sync() {
+    finished = true;
+    receiver.join();
+    finished = false;
+    receiver = std::thread([this] { discardResult(); });
+  }
+
+  void discardResult() {
+    while (!finished || inputCount < outputCount) {
+      size_t size;
+      void *addr = outputQueue.startRead(&size);
+      outputQueue.finishRead(addr);
+      ++outputCount;
+    }
+}
 };
 
 #endif // INFERENCE_CLIENT_H_

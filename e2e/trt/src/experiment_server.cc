@@ -7,7 +7,9 @@
 
 #include "experiment_server.h"
 
-void ExperimentServer::RunInferenceOnFiles(const std::vector<std::string>& kFileNames) {
+void ExperimentServer::RunInferenceOnFiles(
+    const std::vector<std::string>& kFileNames,
+    std::vector<float> &output) {
   std::vector<float> batch;
   batch.reserve(kBatchSize_ * kImSize_);
 
@@ -23,18 +25,22 @@ void ExperimentServer::RunInferenceOnFiles(const std::vector<std::string>& kFile
     size_t count = std::min(kFileNames.size() - i, kBatchSize_);
     kInfer_->RunInference(batch.data(), count * kImSize_ * sizeof(float));
   }
+  kInfer_->sync();
 }
 
-float ExperimentServer::TimeEndToEnd(const std::vector<std::string>& kFileNames) {
+float ExperimentServer::TimeEndToEnd(
+    const std::vector<std::string>& kFileNames,
+    std::vector<float> &output) {
   auto start = std::chrono::high_resolution_clock::now();
-  RunInferenceOnFiles(kFileNames);
+  RunInferenceOnFiles(kFileNames, output);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::milli> diff = end - start;
   return diff.count() / 1000.0;
 }
 
 void ExperimentServer::RunInferenceOnCompressed(
-    const std::vector<CompressedImage>& kCompressedImages) {
+    const std::vector<CompressedImage>& kCompressedImages,
+    std::vector<float> &output) {
   #pragma omp parallel for
   for (size_t i = 0; i < kCompressedImages.size(); i += kBatchSize_) {
     std::vector<float> batch;
@@ -49,14 +55,16 @@ void ExperimentServer::RunInferenceOnCompressed(
     size_t count = std::min(kCompressedImages.size() - i, kBatchSize_);
     kInfer_->RunInference(batch.data(), count * kImSize_ * sizeof(float));
   }
+  kInfer_->sync();
 }
 
 
 
-float ExperimentServer::TimeNoLoad(const std::vector<CompressedImage>& kCompressedImages) {
-
+float ExperimentServer::TimeNoLoad(
+    const std::vector<CompressedImage>& kCompressedImages,
+    std::vector<float> &output) {
   auto start = std::chrono::high_resolution_clock::now();
-  RunInferenceOnCompressed(kCompressedImages);
+  RunInferenceOnCompressed(kCompressedImages, output);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double, std::milli> diff = end - start;
   float time = diff.count() / 1000.0;

@@ -13,13 +13,21 @@
 void InferenceServer::_RunInferenceThread(const size_t idx) {
   std::vector<char> buffer;
   while (true) {
-    size_t size;
-    void *addr = inputQueue.startRead(&size);
+    size_t isize, osize;
+    void *output;
+    void *addr = inputQueue.startRead(&isize);
     if (!addr) return;
-    if (size > buffer.size()) buffer.resize(size);
-    memcpy(buffer.data(), addr, size);
-    inputQueue.finishRead(&size);
-    RunInference(buffer.data(), size, idx);
+    if (isize > buffer.size()) buffer.resize(isize);
+    memcpy(buffer.data(), addr, isize);
+    inputQueue.finishRead(addr);
+
+    RunInference(buffer.data(), isize, output, osize, idx);
+
+    if (!output || !osize) continue;
+    addr = outputQueue.alloc(osize);
+    if(!addr) continue;
+    memcpy(addr, output, osize);
+    outputQueue.finishWrite(addr);
   }
 }
 
@@ -100,9 +108,10 @@ nvinfer1::ICudaEngine* OnnxInferenceServer::GetCudaEngine(const std::string& kEn
 }
 
 OnnxInferenceServer::OnnxInferenceServer(
-    const char *inputQueueName,
+    const std::string &inputQueueName,
+    const std::string &outputQueueName,
     const std::string& kEnginePath, const size_t kBatchSize, const bool kDoMemcpy) :
-    InferenceServer(inputQueueName),
+    InferenceServer(inputQueueName, outputQueueName),
     kBatchSize_(kBatchSize),
     contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
@@ -113,7 +122,8 @@ OnnxInferenceServer::OnnxInferenceServer(
 }
 
 OnnxInferenceServer::OnnxInferenceServer(
-    const char *inputQueueName,
+    const std::string &inputQueueName,
+    const std::string &outputQueueName,
     const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
     const std::string& kCachePath,
     const size_t kBatchSize, const bool kDoMemcpy,
@@ -122,7 +132,7 @@ OnnxInferenceServer::OnnxInferenceServer(
     const bool kDoINT8,
     const bool kAddResize
 ) :
-    InferenceServer(inputQueueName),
+    InferenceServer(inputQueueName, outputQueueName),
     kBatchSize_(kBatchSize),
     contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
@@ -144,7 +154,8 @@ OnnxInferenceServer::OnnxInferenceServer(
 
 
 OnnxInferenceServer::OnnxInferenceServer(
-    const char *inputQueueName,
+    const std::string &inputQueueName,
+    const std::string &outputQueueName,
     const std::string& kOnnxPath, const std::string& kOnnxPathBS1,
     const std::string& kCachePath,
     const size_t kBatchSize, const bool kDoMemcpy,
@@ -153,7 +164,7 @@ OnnxInferenceServer::OnnxInferenceServer(
     const bool kDoINT8,
     const bool kAddResize
 ) :
-    InferenceServer(inputQueueName),
+    InferenceServer(inputQueueName, outputQueueName),
     kBatchSize_(kBatchSize),
     contexts(kNbStreams_), outputBuffers(kNbStreams_),
     kDoMemcpy_(kDoMemcpy) {
@@ -183,12 +194,12 @@ void OnnxInferenceServer::LoadAndLaunch() {
     for (size_t i = 0; i < this->engine->getNbBindings(); i++) {
       nvinfer1::Dims dims{this->engine->getBindingDimensions(i)};
       size_t size = std::accumulate(dims.d, dims.d + dims.nbDims, 1, std::multiplies<size_t>());
-      cudaMalloc(&this->bindings[j][i], size * sizeof(float));
+      cudaMalloc(&this->bindings[j][i], size * sizeof(float) * kBatchSize_);
       if (!this->engine->bindingIsInput(i))
-        kOutputSingle_ = size / kBatchSize_;
+        kOutputSingle_ = size;
     }
     this->contexts[j].reset(engine->createExecutionContext());
-    this->outputBuffers[j].resize(kOutputSingle_);
+    this->outputBuffers[j].resize(kOutputSingle_ * kBatchSize_ * sizeof(float));
   }
 
   // Launch thread
@@ -198,12 +209,12 @@ void OnnxInferenceServer::LoadAndLaunch() {
 
 
 
-void OnnxInferenceServer::RunInference(void *data, size_t size, size_t idx) {
+void OnnxInferenceServer::RunInference(void *data, size_t isize, void *&output, size_t &osize, size_t idx) {
   const int input_id = !contexts[idx]->getEngine().bindingIsInput(0);
   if (kDoMemcpy_) {
     cudaMemcpyAsync(bindings[idx][input_id],
                     data,
-                    size,
+                    isize,
                     cudaMemcpyHostToDevice, streams[idx]);
   }
   contexts[idx]->enqueueV2(bindings[idx], streams[idx], nullptr);
@@ -214,6 +225,8 @@ void OnnxInferenceServer::RunInference(void *data, size_t size, size_t idx) {
                     cudaMemcpyDeviceToHost, streams[idx]);
   }
   cudaStreamSynchronize(streams[idx]);
+  output = outputBuffers[idx].data();
+  osize = outputBuffers[idx].size();
 }
 
 void OnnxInferenceServer::Sync() {
