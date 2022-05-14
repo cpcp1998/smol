@@ -8,30 +8,23 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <aws/core/Aws.h>
+#include <aws/core/client/ClientConfiguration.h>
+#include <aws/core/utils/logging/LogLevel.h>
+
 #include "include/data_loader.h"
 #include "include/inference_client.h"
 #include "include/experiment_server.h"
 #include "include/criterion.h"
 
 // Expects a validation directory as in pytorch
-std::vector<std::string> GetFileNames(const std::string& val_dir) {
-  namespace fs = std::experimental::filesystem;
-
+std::vector<std::string> GetFileNames(const std::string& val_list) {
   std::vector<std::string> file_paths;
-  std::vector<fs::path> dirs;
-  std::copy(fs::directory_iterator(val_dir), fs::directory_iterator(), std::back_inserter(dirs));
-  std::sort(dirs.begin(), dirs.end());
+  std::ifstream val(val_list);
+  std::string file_path;
 
-  for (const auto& dir : dirs) {
-    if (fs::is_directory(dir)) {
-      std::vector<fs::path> fnames;
-      std::copy(fs::directory_iterator(dir.string()), fs::directory_iterator(), std::back_inserter(fnames));
-      std::sort(fnames.begin(), fnames.end());
-      for (const auto& fname : fnames) {
-        std::string file_name = fname.string();
-        file_paths.push_back(file_name);
-      }
-    }
+  while (std::getline(val, file_path)) {
+      file_paths.push_back(file_path);
   }
 
   return file_paths;
@@ -84,6 +77,9 @@ static std::vector<size_t> MaskToIndMap(const std::vector<bool>& mask) {
 }
 
 int main(int argc, char *argv[]) {
+  Aws::SDKOptions options;
+  options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+  Aws::InitAPI(options);
 
   assert(argc == 2);
   YAML::Node cfg = YAML::LoadFile(argv[1]);
@@ -184,6 +180,8 @@ int main(int argc, char *argv[]) {
       std::cerr << "Runtime: " << time << std::endl;
     }
   }
+
+  Aws::ShutdownAPI(options);
 
   return 0;
 }

@@ -35,6 +35,8 @@ find_path(ONNX_INCLUDE onnx HINTS /lfs/1/ddkang/local/include)
 ## nvinfer
 find_library(NVINFER_LIB nvinfer ${TensorRT_LIBRARY})
 find_library(NVONNX_LIB nvonnxparser ${TensorRT_LIBRARY})
+## AWS S3
+find_package(AWSSDK REQUIRED COMPONENTS s3)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DONNX_ML=1 -O3")
 set(ALL_LIBS
   ${OpenCV_LIBS} ${JPEG_LIBRARIES} ${CUDA_LIBRARIES}
@@ -46,6 +48,7 @@ set(ALL_LIBS
   ${GLOG_LIBRARIES} ${DOUBLE_CONVERSION_LIBRARY}
   ${ONNX_LIB} ${ONNX_PROTO_LIB}
   ${NVINFER_LIB} ${NVONNX_LIB}
+  ${AWSSDK_LINK_LIBRARIES}
   "stdc++fs")
 
 

@@ -2,6 +2,13 @@
 #include <iterator>
 #include <fstream>
 
+#include <aws/core/Aws.h>
+#include <aws/core/client/ClientConfiguration.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
+#include <aws/core/utils/logging/LogLevel.h>
+#include <aws/s3/S3Client.h>
+#include <aws/s3/model/GetObjectRequest.h>
+
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include "opencv2/imgproc/imgproc.hpp"
@@ -12,6 +19,32 @@
 #include "data_loader.h"
 
 CompressedImage DataLoader::LoadCompressedImageFromFile(const std::string& kFileName) const {
+  if (kFileName.substr(0, 5) == "s3://") {
+    size_t slash_pos = kFileName.find('/', 5);
+    if (slash_pos == std::string::npos) std::cerr << "Cannot parse S3 path: " << kFileName << std::endl;
+    std::string bucket = kFileName.substr(5, slash_pos - 5);
+    std::string key = kFileName.substr(slash_pos + 1);
+
+    Aws::Client::ClientConfiguration config;
+    config.scheme = Aws::Http::Scheme::HTTPS;
+
+    Aws::S3::S3Client client(config);
+
+    Aws::S3::Model::GetObjectRequest request;
+    request.SetBucket(bucket);
+    request.SetKey(key);
+
+    Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
+    if (!outcome.IsSuccess()) {
+        std::cerr << "S3 load failed with error: " << outcome.GetError() << std::endl;
+        std::cerr << "Bucket: " << bucket << ", Key: " << key << std::endl;
+    }
+    size_t file_size = outcome.GetResultWithOwnership().GetContentLength();
+    Aws::IOStream &file = outcome.GetResultWithOwnership().GetBody();
+    uint8_t *ret = (uint8_t *) malloc(file_size);
+    file.read((char *)ret, file_size);
+    return std::make_pair(ret, file_size);
+  }
   std::ifstream file(kFileName, std::ios::binary | std::ios::in);
   file.unsetf(std::ios::skipws);
 
