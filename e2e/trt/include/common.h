@@ -6,17 +6,12 @@
 
 #include <thrust/system/cuda/experimental/pinned_allocator.h>
 
-#include "folly/MPMCQueue.h"
-
 // Due to weird JPEG fuckery, the JPEG routines free the compressed image files (???)
 // As a result, pass the raw pointers, not anything smarter
 typedef std::pair<uint8_t *, size_t> CompressedImage;
 // typedef std::unique_ptr<std::vector<float> > Batch;
 typedef std::vector<float, thrust::system::cuda::experimental::pinned_allocator<float> > BatchBase;
 typedef std::unique_ptr<BatchBase> Batch;
-typedef std::tuple<
-    Batch, size_t,
-    float *, size_t, folly::MPMCQueue<Batch> *> QueueData;
 
 
 class LoaderCondition {

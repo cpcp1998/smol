@@ -3,7 +3,6 @@
 
 #include <thrust/system/cuda/experimental/pinned_allocator.h>
 
-#include "folly/MPMCQueue.h"
 #include "omp.h"
 
 #include "data_loader.h"

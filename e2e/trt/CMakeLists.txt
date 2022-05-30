@@ -21,11 +21,6 @@ find_library(AVCODEC_LIB NAMES avcodec HINTS /lfs/1/ddkang/local/lib)
 find_library(POSTPROC_LIB NAMES postproc HINTS /lfs/1/ddkang/local/lib)
 find_library(SWSCALE_LIB NAMES swscale HINTS /lfs/1/ddkang/local/lib)
 find_library(SWRESAMPLE_LIB NAMES swresample HINTS /lfs/1/ddkang/local/lib)
-## Folly
-find_package(folly REQUIRED)
-include(cmake/FindGlog.cmake)
-include(cmake/FindDoubleConversion.cmake)
-find_package(fmt REQUIRED)
 ## TensorRT
 include(cmake/FindTensorRT.cmake)
 ## ONNX
@@ -44,8 +39,7 @@ set(ALL_LIBS
   yaml-cpp
   ${AVUTIL_LIB} ${AVFILTER_LIB} ${AVFORMAT_LIB} ${AVCODEC_LIB} ${AVDEVICE_LIB}
   ${POSTPROC_LIB} ${SWSCALE_LIB} ${SWRESAMPLE_LIB}
-  ${Protobuf_LIBRARIES} folly fmt
-  ${GLOG_LIBRARIES} ${DOUBLE_CONVERSION_LIBRARY}
+  ${Protobuf_LIBRARIES}
   ${ONNX_LIB} ${ONNX_PROTO_LIB}
   ${NVINFER_LIB} ${NVONNX_LIB}
   ${AWSSDK_LINK_LIBRARIES}

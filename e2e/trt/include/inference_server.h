@@ -9,7 +9,6 @@
 
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
-#include "folly/MPMCQueue.h"
 
 #include "cuda_wrapper.h"
 #include "io_helper.h"
