@@ -18,17 +18,16 @@
 
 #include "data_loader.h"
 
+
+thread_local Aws::Client::ClientConfiguration config;
+thread_local Aws::S3::S3Client client(config);
+
 CompressedImage DataLoader::LoadCompressedImageFromFile(const std::string& kFileName) const {
   if (kFileName.substr(0, 5) == "s3://") {
     size_t slash_pos = kFileName.find('/', 5);
     if (slash_pos == std::string::npos) std::cerr << "Cannot parse S3 path: " << kFileName << std::endl;
     std::string bucket = kFileName.substr(5, slash_pos - 5);
     std::string key = kFileName.substr(slash_pos + 1);
-
-    Aws::Client::ClientConfiguration config;
-    config.scheme = Aws::Http::Scheme::HTTPS;
-
-    Aws::S3::S3Client client(config);
 
     Aws::S3::Model::GetObjectRequest request;
     request.SetBucket(bucket);
